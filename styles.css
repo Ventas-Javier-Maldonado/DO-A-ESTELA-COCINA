@@ -314,3 +314,9 @@ main{width:100%;max-width:none;margin:0;padding:0}
 .draft-sticky-inner{display:flex;align-items:center;gap:14px;background:#fff9ee;color:#233f32;border:2px solid #c5a36a;box-shadow:0 4px 17px #0003;padding:8px 12px;border-radius:12px;font-size:12px}
 .draft-sticky-inner .primary{padding:8px 10px;font-size:12px;white-space:nowrap}
 @media(max-width:560px){.draft-sticky{left:10px;right:10px}.draft-sticky-inner{justify-content:space-between}}
+
+/* V21 · Navegación discreta visible en pantallas del personal, PC y celular. */
+.bd-return-bar{position:sticky;top:0;z-index:85;display:flex;justify-content:flex-start;align-items:center;padding:6px clamp(12px,3vw,55px);background:#f7ecddf5;border-bottom:1px solid #d4bc90;backdrop-filter:blur(5px);min-height:39px}
+.bd-return-bar button{border:1px solid #c5a36a;background:#233f32;color:#f7ecdd;font-weight:600;border-radius:7px;padding:6px 13px;font-size:12px;min-height:30px}
+.bd-return-bar button:hover,.bd-return-bar button:focus-visible{background:#751d25;color:#fff}
+@media(max-width:560px){.bd-return-bar{padding:5px 12px;min-height:38px}.bd-return-bar button{font-size:12px;min-height:29px;padding:5px 12px}}

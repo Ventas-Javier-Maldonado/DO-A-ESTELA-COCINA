@@ -27,6 +27,60 @@ const $=q=>document.querySelector(q), esc=x=>String(x??'').replace(/[&<>"']/g,c=
 function note(x){s.notice=x;render()}function log(x){data.events.unshift({time:new Date().toLocaleString('es-MX'),text:x});data.events=data.events.slice(0,250);save()}
 function table(n){return data.tables.find(t=>t.number===Number(n))}function total(items){return items.reduce((v,x)=>v+(x.gift?0:x.price*x.qty),0)}function bill(t){return Math.max(0,total(t.items)-(t.adjust||0))}
 function photo(p){if(p.imagen_url&&/^https:\/\/[^\s"'<>]+$/i.test(p.imagen_url))return esc(p.imagen_url);return 'assets/'+(p.image||'enchiladas')+'.webp'}function product(id){return data.products.find(p=>p.id===Number(id))}
+// V21 · Navegación de pantallas compatible con Atrás de Chrome y Android.
+let bdNavReady=false, bdNavRestoring=false;
+function bdScreenSnapshot(){return {view:s.view,adminTab:s.adminTab,loginRole:s.loginRole,selected:s.selected,pay:s.pay,cartOpen:s.cartOpen,orderReturnView:s.orderReturnView,step:0};}
+function bdScreenKey(x){return [x.view,x.view==='admin'?x.adminTab:'',x.view==='caja'?(x.pay?.type||'')+':'+(x.pay?.id||''):'',x.cartOpen?'carrito':''].join('|');}
+function bdRecordNavigation(){
+  const snapshot=bdScreenSnapshot();
+  if(!bdNavReady){
+    history.replaceState({...history.state,__bdPage:snapshot},'',location.href);
+    bdNavReady=true;return;
+  }
+  if(bdNavRestoring)return;
+  const prior=history.state?.__bdPage;
+  snapshot.step=(prior?.step||0)+(bdScreenKey(prior||{})!==bdScreenKey(snapshot)?1:0);
+  if(bdScreenKey(prior||{})!==bdScreenKey(snapshot)){history.pushState({...history.state,__bdPage:snapshot},'',location.href);}
+  else history.replaceState({...history.state,__bdPage:snapshot},'',location.href);
+}
+function bdHome(){return s.staffRole==='Administrador'?'admin':s.staffRole==='Cajera'?'caja':s.staffRole==='Mesera'?'mesera':'menu'}
+function backNav(){
+  if(s.view==='mesera'&&s.draft.length&&s.orderReturnView){
+    if(!confirm('Tienes consumos sin enviar. ¿Quieres salir de esta pantalla?'))return;
+  }
+  if(history.state?.__bdPage?.step>0){history.back();return;}
+  // Contingencia de acceso directo sin historial previo.
+  if(s.cartOpen){s.cartOpen=false;render();return;}
+  if(s.pay){s.pay=null;render();return;}
+  if(s.view==='admin'&&s.adminTab!=='inicio'){s.adminTab='inicio';render();return;}
+  const target=s.orderReturnView||((s.view==='mesera'&&s.staffRole==='Cajera')?'caja':(s.view==='mesera'&&s.staffRole==='Administrador')?'admin':'menu');
+  s.orderReturnView=null;s.view=target;render();void syncNow();
+}
+window.addEventListener('popstate',e=>{
+  bdNavRestoring=true;
+  try{
+    const page=e.state?.__bdPage;
+    if(page){
+      const target=page.view==='login'&&s.authVerified?'menu':page.view;
+      const protectedView=['mesera','caja','admin'].includes(target);
+      s.view=protectedView&&(!s.authVerified||!allowedView(target))?'menu':target;
+      s.adminTab=page.adminTab||'inicio';s.loginRole=page.loginRole||'';
+      s.pay=page.pay||null;s.cartOpen=Boolean(page.cartOpen);s.orderReturnView=page.orderReturnView||null;
+      if(Number.isInteger(Number(page.selected))&&table(Number(page.selected)))s.selected=Number(page.selected);
+    }else{s.view='menu';s.pay=null;s.orderReturnView=null;}
+    s.menuOpen=false;
+    if(s.view!=='caja')s.pay=null;
+    if(s.view!=='mesera')s.orderReturnView=null;
+    render();
+  }finally{bdNavRestoring=false;}
+  if(s.authVerified)void syncNow();
+});
+function navBackBar(){
+  if(s.view==='menu')return '';
+  const label=s.view==='mesera'?(s.orderReturnView==='caja'||s.staffRole==='Cajera'?'Volver a Caja':s.orderReturnView==='admin'||s.staffRole==='Administrador'?'Volver al Administrador':'Volver'):
+    s.view==='login'?'Volver al menú':s.view==='checkout'?'Volver al menú':s.view==='sent'?'Volver al menú':'Volver al menú';
+  return `<div class="bd-return-bar"><button type="button" onclick="backNav()" aria-label="${label}">← ${label}</button></div>`;
+}
 function renderHeader(){const customer=s.view==='menu';return `<header class="top ${customer?'top-customer':''}"><div class="header-brand"><small>${s.staffRole?'PERSONAL · '+esc(s.staffRole.toUpperCase()):'COCINA ECONÓMICA'}</small>${customer?'':`<h1>Doña Estela</h1><p>${s.staffRole?'Panel de '+esc(s.staffRole):'Sabor casero, como en casa'}</p>`}</div><button class="hamb" onclick="toggleMenu()" aria-label="Abrir menú">☰</button></header>${s.menuOpen?`<div class="dropdown">${['Menú','Mesera','Caja','Administrador'].map((x,i)=>`<button onclick="go('${['menu','mesera','caja','admin'][i]}')">${x}</button>`).join('')}${s.staffRole?'<hr class="divider"><button onclick="logout()">Cerrar sesión</button>':''}</div>`:''}`}
 function toggleMenu(){s.menuOpen=!s.menuOpen;render()}function go(v){s.menuOpen=false;if(v==='menu'){s.view='menu';render();return}if(!s.staffRole){s.loginRole=v;s.view='login';render();return}if(!allowedView(v)){note('Este usuario no tiene permiso para esta pantalla');return}s.view=v;render();void syncNow();}
 function allowedView(v){if(!s.authVerified)return false;if(s.staffRole==='Administrador')return true;if(v==='caja')return s.authPerms.includes('cobrar_cuentas');if(v==='mesera')return s.authPerms.some(x=>['ver_mesas','agregar_pedidos','abrir_cuentas'].includes(x));return false}
@@ -58,7 +112,7 @@ function category(x){s.category=x;s.expanded=null;render()}function expand(id){s
 function addCart(id){let p=product(id);if(p.price===null)return note('Precio pendiente de confirmar.');let q=Math.max(1,Math.min(99,Number($('#qty'+id)?.value)||1)),obs=$('#obs'+id)?.value||'';s.cart.push({id:p.id,name:p.name,price:p.price,qty:q,obs,origin:'Cliente QR',sent:false});s.expanded=null;render()}
 function removeCart(i){s.cart.splice(i,1);render()}function dishRows(mode){return data.products.filter(p=>p.active&&(s.category==='Todas'||p.cat===s.category)).map(p=>dishCard(p,mode)).join('')}
 function menu(){const cats=[...new Set(data.products.filter(p=>p.active).map(p=>p.cat))];const sections=s.category==='Todas'?cats:[s.category];return `<section class="section customer"><div class="approved-hero"><img src="assets/PORTADA_OFICIAL_APROBADA.webp" alt="Portada aprobada de Doña Estela Cocina Económica"><div class="hero-links">${['Desayunos','Comidas','Tortas','Bebidas','Pozole','Menudo'].map(x=>`<button aria-label="Ver ${x}" title="Ver ${x}" onclick="category('${x==='Pozole'||x==='Menudo'?'Pozole y menudo':x}');document.getElementById('products-start')?.scrollIntoView({behavior:'smooth'})"></button>`).join('')}</div></div>${flashCustomer()}<div id="products-start" class="menu-day-heading">Nuestro Menú</div><div class="all-menu-tools"><button onclick="category('Todas')">Ver todo el menú</button>${cats.map(c=>`<button class="${s.category===c?'selected':''}" onclick="category('${esc(c)}')">${esc(c)}</button>`).join('')}</div>${sections.map(c=>`<section class="menu-category ${c==='Bebidas'?'beverages-category':''}" id="menu-${esc(c)}"><h2>${esc(c)}</h2><div class="list">${data.products.filter(p=>p.active&&p.cat===c).map(p=>c==='Bebidas'?beverageRow(p):dishCard(p,'menu')).join('')}</div></section>`).join('')}<button class="cart-float" onclick="openCart()" aria-label="Abrir mi pedido"><span class="cart-icon" aria-hidden="true">🛒</span><span class="cart-title">Mi pedido</span><b class="cart-count">${s.cart.reduce((a,x)=>a+x.qty,0)}</b><small class="cart-total">${money(total(s.cart))}</small></button>${s.cartOpen?cartDrawer():''}${footer()}</section>`}
-function openCart(){s.cartOpen=true;render()}function closeCart(){s.cartOpen=false;render()}
+function openCart(){s.cartOpen=true;render()}function closeCart(){if(s.cartOpen&&history.state?.__bdPage?.step>0){backNav();return;}s.cartOpen=false;render()}
 function setCartQty(i,value){const item=s.cart[i];if(!item)return;const n=Math.max(0,Math.min(99,Math.floor(Number(value)||0)));if(n===0)s.cart.splice(i,1);else item.qty=n;render()}
 function cartDrawer(){return `<div class="cart-shade" onclick="closeCart()"></div><aside class="cart-panel" role="dialog" aria-modal="true" aria-label="Mi pedido"><div class="cart-panel-head"><h2>Mi pedido</h2><button onclick="closeCart()" aria-label="Cerrar">✕</button></div>${s.cart.length?s.cart.map((x,i)=>`<div class="cart-line"><div><b>${esc(x.name)}</b><small>${esc(x.obs)}</small><strong>${money(x.price*x.qty)}</strong></div><div class="cart-quantity"><button onclick="setCartQty(${i},${x.qty-1})">−</button><span>${x.qty}</span><button onclick="setCartQty(${i},${x.qty+1})">+</button><button class="cart-trash" onclick="removeCart(${i})">Eliminar</button></div></div>`).join(''):'<p>Tu carrito está vacío. Selecciona un platillo.</p>'}<div class="cart-bottom"><div class="row"><b>Total</b><b>${money(total(s.cart))}</b></div><button class="primary" ${s.cart.length?'':'disabled'} onclick="s.cartOpen=false;s.view='checkout';render()">Continuar con mi pedido</button></div></aside>`}
 // V13: lista compacta de bebidas — exclusivamente en el menú del cliente.
@@ -79,7 +133,7 @@ async function openTable(){
   if(!s.authVerified||!window.BD)return note('Inicia sesión para abrir esta mesa.');
   try{await BD.openTable(s.selected);}
   catch(e){return note('No se abrió la mesa: '+e.message)}
-  try{await refreshSharedTables();note('Mesa abierta en Supabase.');}
+  try{await refreshSharedTables(true,true);note('Mesa abierta en Supabase.');}
   catch(e){handleSyncError(e);note('Mesa abierta en Supabase; no se pudo actualizar la pantalla. Pulsa «Actualizar mesas».')}
 }
 // V19 · Confirmación inmediata y control del pedido pendiente ARRIBA de los platillos.
@@ -131,7 +185,8 @@ function orderEntryFor(number){
   s.orderReturnView=s.view==='admin'?'admin':'caja';
   s.selected=Number(number);s.category='Todas';s.draft=[];s.pay=null;s.view='mesera';render();
 }
-function backFromOrder(){s.draft=[];s.orderReturnView&& (s.view=s.orderReturnView);s.orderReturnView=null;render();}
+function backFromOrder(){backNav()}
+function enterStaffTables(origin){s.orderReturnView=origin;s.pay=null;s.selected=s.selected||1;s.view='mesera';render();void syncNow();}
 
 async function sendDraft(){
   if(s.sendingDraft)return;
@@ -146,7 +201,7 @@ async function sendDraft(){
     await BD.placeTableOrder(s.selected,items,opId);
     s.draft=[];s.pendingDraftOp=null;
     let refreshed=true;
-    try{await refreshSharedTables(false);}catch(e){refreshed=false;handleSyncError(e);}
+    try{await refreshSharedTables(false,true);}catch(e){refreshed=false;handleSyncError(e);}
     if(s.orderReturnView){s.view=s.orderReturnView;s.orderReturnView=null;}
     note(refreshed?'Pedido registrado en Supabase. Caja puede consultarlo.':'Pedido registrado en Supabase. Falta actualizar la pantalla de Caja; pulsa «Actualizar mesas».');
   }
@@ -155,9 +210,9 @@ async function sendDraft(){
 }
 function newTableForm(){return `<details class="card"><summary>+ Agregar mesa / generar QR</summary><p class="muted">Siguiente número: Mesa ${Math.max(...data.tables.map(t=>t.number))+1}</p><label>Ubicación (opcional)</label><input id="newTableLocation" placeholder="Terraza, interior..."><label>Nombre (opcional)</label><input id="newTableName" placeholder="Junto a ventana..."><button onclick="addTable()" class="primary">Agregar mesa</button></details>`}
 function mesera(){let t=table(s.selected);return `<section class="section"><h2>Mesera · Mesas</h2>${tableButtons()}<div class="card"><div class="row"><h3>Mesa ${t.number} ${esc(t.name)}</h3><span class="tag ${t.open?'open':''}">${t.open?'Abierta':'Libre'}</span></div>${t.open?`<h3>Consumos registrados</h3>${t.items.map(x=>`<div class="row orderline"><span>${x.qty} × ${esc(x.name)}<br><small>${esc(x.origin)} ${esc(x.obs)}</small></span><b>${money(x.gift?0:x.price*x.qty)}</b></div>`).join('')||'<p class="muted">Sin consumos</p>'}<hr class="divider"><div class="row"><b>Total</b><b>${money(bill(t))}</b></div><h3>Agregar bebidas y platillos</h3>${s.orderReturnView?`<button class="order-back" type="button" onclick="backFromOrder()">← Volver a ${s.orderReturnView==='caja'?'Caja':'Administrador'}</button>`:''}<div id="draftPanel" class="card draft-panel" aria-live="polite">${draftPanelBody()}</div><div class="tabs">${[...new Set(data.products.map(x=>x.cat))].map(x=>`<button class="${s.category===x?'active':''}" onclick="category('${esc(x)}')">${esc(x)}</button>`).join('')}</div><div class="list">${dishRows('mesera')}</div>`:`<p class="muted">La cuenta se abrirá también si el cliente pide primero por QR.</p><button class="primary" onclick="openTable()">Abrir mesa</button>`}</div>${newTableForm()}<div id="draftSticky" class="draft-sticky">${draftStickyBody()}</div></section>`}
-function caja(){return `<section class="section"><h2>Caja principal</h2><div class="tabs"><button onclick="s.view='mesera';render()">+ Registrar en mesa</button><button onclick="newCounter()">+ Pedido de mostrador</button></div><h3>Mesas / cuentas abiertas</h3>${data.tables.filter(t=>t.open).map(t=>`<div class="card row"><div><b>Mesa ${t.number}</b><br><small>${t.items.length} productos · ${esc(t.location)}</small></div><b>${money(bill(t))}</b><div class="actions"><button onclick="orderEntryFor(${t.number})">+ Platillos</button><button onclick="s.pay={type:'mesa',id:${t.number}};render()">Ver / Cobrar</button></div></div>`).join('')||'<p class="muted">No hay mesas abiertas.</p>'}<h3>Mostrador · Para llevar · Domicilio</h3>${data.orders.filter(o=>!o.paid).map(o=>`<div class="card row"><div><b>${esc(o.folio)}</b><br><small>${esc(o.service)} · ${esc(o.status)} · ${esc(o.name)}</small></div><b>${money(total(o.items))}</b><button onclick="s.pay={type:'order',id:'${esc(o.folio)}'};render()">Ver</button></div>`).join('')||'<p class="muted">Sin pedidos pendientes.</p>'}${s.pay?payPanel():''}${newTableForm()}</section>`}
+function caja(){return `<section class="section"><h2>Caja principal</h2><div class="tabs"><button onclick="enterStaffTables('caja')">+ Registrar en mesa</button><button onclick="newCounter()">+ Pedido de mostrador</button></div><h3>Mesas / cuentas abiertas</h3>${data.tables.filter(t=>t.open).map(t=>`<div class="card row"><div><b>Mesa ${t.number}</b><br><small>${t.items.length} productos · ${esc(t.location)}</small></div><b>${money(bill(t))}</b><div class="actions"><button onclick="orderEntryFor(${t.number})">+ Platillos</button><button onclick="s.pay={type:'mesa',id:${t.number}};render()">Ver / Cobrar</button></div></div>`).join('')|| (s.syncStatus==='error'?'<p class="muted">No se pudo consultar Supabase. Pulsa «Actualizar mesas» y revisa el error de sincronización.</p>':'<p class="muted">No hay mesas abiertas en Supabase.</p>')}<h3>Mostrador · Para llevar · Domicilio</h3>${data.orders.filter(o=>!o.paid).map(o=>`<div class="card row"><div><b>${esc(o.folio)}</b><br><small>${esc(o.service)} · ${esc(o.status)} · ${esc(o.name)}</small></div><b>${money(total(o.items))}</b><button onclick="s.pay={type:'order',id:'${esc(o.folio)}'};render()">Ver</button></div>`).join('')||'<p class="muted">Sin pedidos pendientes.</p>'}${s.pay?payPanel():''}${newTableForm()}</section>`}
 function newCounter(){s.view='menu';s.service='barra';s.cart=[];note('Selecciona los productos y luego Realizar pedido → Barra / mostrador.')}
-function payPanel(){let t=s.pay.type==='mesa'?table(s.pay.id):null,o=t?null:data.orders.find(x=>x.folio===s.pay.id),items=t?t.items:o?.items||[],amount=t?bill(t):total(items);return `<div class="card" id="payment"><div class="row"><h3>${t?'Mesa '+t.number:esc(o?.folio)}</h3><button onclick="s.pay=null;render()">Cerrar detalle ×</button></div>${items.map(x=>`<div class="row orderline"><span>${x.qty} × ${esc(x.name)} ${x.gift?'(cortesía)':''}</span><b>${money(x.gift?0:x.price*x.qty)}</b></div>`).join('')}<hr class="divider"><div class="row"><b>Total a cobrar</b><b class="price">${money(amount)}</b></div>${o?`<p class="muted">${esc(o.name)} · ${esc(o.phone)} · ${esc(o.address)}</p><label>Estado del pedido</label><select id="orderStatus">${['Por confirmar','Confirmado','Preparando','Listo','En reparto','Entregado'].map(x=>`<option ${o.status===x?'selected':''}>${x}</option>`).join('')}</select><button onclick="updateOrderStatus('${esc(o.folio)}')">Guardar estado</button>`:''}<label>Forma de pago</label><select id="payMethod" onchange="renderPayFields()"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select><div id="payFields"><label>Efectivo recibido</label><input id="received" type="number" min="0" step=".01" oninput="changeCalc(${amount})"><div id="change"></div></div><button class="primary" onclick="closeBill()">Cobrar y cerrar cuenta</button></div>`}
+function payPanel(){let t=s.pay.type==='mesa'?table(s.pay.id):null,o=t?null:data.orders.find(x=>x.folio===s.pay.id),items=t?t.items:o?.items||[],amount=t?bill(t):total(items);return `<div class="card" id="payment"><div class="row"><h3>${t?'Mesa '+t.number:esc(o?.folio)}</h3><button onclick="backNav()">Cerrar detalle ×</button></div>${items.map(x=>`<div class="row orderline"><span>${x.qty} × ${esc(x.name)} ${x.gift?'(cortesía)':''}</span><b>${money(x.gift?0:x.price*x.qty)}</b></div>`).join('')}<hr class="divider"><div class="row"><b>Total a cobrar</b><b class="price">${money(amount)}</b></div>${o?`<p class="muted">${esc(o.name)} · ${esc(o.phone)} · ${esc(o.address)}</p><label>Estado del pedido</label><select id="orderStatus">${['Por confirmar','Confirmado','Preparando','Listo','En reparto','Entregado'].map(x=>`<option ${o.status===x?'selected':''}>${x}</option>`).join('')}</select><button onclick="updateOrderStatus('${esc(o.folio)}')">Guardar estado</button>`:''}<label>Forma de pago</label><select id="payMethod" onchange="renderPayFields()"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option></select><div id="payFields"><label>Efectivo recibido</label><input id="received" type="number" min="0" step=".01" oninput="changeCalc(${amount})"><div id="change"></div></div><button class="primary" onclick="closeBill()">Cobrar y cerrar cuenta</button></div>`}
 function renderPayFields(){let m=$('#payMethod').value;$('#payFields').innerHTML=m==='Efectivo'?'<label>Efectivo recibido</label><input id="received" type="number" min="0" step=".01" oninput="changeCalc()"><div id="change"></div>':'<label>Referencia (opcional)</label><input id="reference" placeholder="Folio de operación">'}function changeCalc(){let t=s.pay.type==='mesa'?table(s.pay.id):null,o=t?null:data.orders.find(x=>x.folio===s.pay.id),a=t?bill(t):total(o.items),n=Number($('#received')?.value||0);$('#change').textContent='Cambio: '+money(Math.max(0,n-a))}
 function updateOrderStatus(id){let o=data.orders.find(x=>x.folio===id);o.status=$('#orderStatus').value;log('Pedido '+id+' → '+o.status);save();note('Estado actualizado')}
 async function closeBill(){
@@ -174,7 +229,7 @@ async function closeBill(){
     await BD.chargeTable(t.remoteCuentaId,metodo,op,$('#reference')?.value||'');
     s.pendingPayOp=null;
     s.pay=null;
-    try{await refreshSharedTables();note('Pago registrado en Supabase. Cuenta cerrada para todo el personal.');}
+    try{await refreshSharedTables(true,true);note('Pago registrado en Supabase. Cuenta cerrada para todo el personal.');}
     catch(e){handleSyncError(e);note('Pago registrado en Supabase. Actualiza las mesas para ver el cierre.');}
   }catch(e){note('No se cobró la mesa: '+e.message)}
 }
@@ -187,7 +242,7 @@ function flashAdmin(){const promos=data.flashPromos;const now=new Date();const l
 function flashCreate(){const productId=Number($('#flashProduct').value),price=Number($('#flashPrice').value),start=$('#flashStart').value,end=$('#flashEnd').value,limit=Number($('#flashLimit').value);const prod=product(productId);if(!prod||!Number.isFinite(price)||$('#flashPrice').value===''||price<0||price>=prod.price||!start||!end||new Date(end)<=new Date(start)||!Number.isInteger(limit)||limit<1)return note('Revisa precio promocional, fechas y unidades. El precio debe ser menor al normal.');data.flashPromos.push({id:Date.now(),productId,price,start,end,limit,used:0,enabled:true,notify:$('#flashNotify').checked});log('Promoción Flash creada: '+prod.name);save();note('Promoción guardada localmente. No se envió notificación push.');}
 function flashToggle(id){const p=data.flashPromos.find(x=>x.id===id);if(p){p.enabled=!p.enabled;save();render()}}
 function flashDelete(id){if(!confirm('¿Eliminar esta promoción?'))return;data.flashPromos=data.flashPromos.filter(x=>x.id!==id);save();render()}
-function adminContent(){let a=s.adminTab,opened=data.tables.filter(t=>t.open),sales=data.sales||[];if(a==='inicio')return `<div class="stats">${[['Ventas',money(sales.reduce((v,x)=>v+x.amount,0))],['Pedidos',data.orders.length],['Mesas abiertas',opened.length+' / '+data.tables.length],['Por confirmar',data.orders.filter(o=>o.status==='Por confirmar'&&!o.paid).length]].map(([k,v])=>`<div class="card"><small>${k}</small><strong>${v}</strong></div>`).join('')}</div><h3>Mesas / Cuentas abiertas</h3>${opened.map(t=>`<div class="card row"><span>Mesa ${t.number}</span><b>${money(bill(t))}</b><button onclick="s.selected=${t.number};s.adminTab='cuentas';render()">Ver</button></div>`).join('')||'<p class="muted">Sin cuentas abiertas</p>'}`;
+function adminContent(){let a=s.adminTab,opened=data.tables.filter(t=>t.open),sales=data.sales||[];if(a==='inicio')return `<div class="stats">${[['Ventas',money(sales.reduce((v,x)=>v+x.amount,0))],['Pedidos',data.orders.length],['Mesas abiertas',opened.length+' / '+data.tables.length],['Por confirmar',data.orders.filter(o=>o.status==='Por confirmar'&&!o.paid).length]].map(([k,v])=>`<div class="card"><small>${k}</small><strong>${v}</strong></div>`).join('')}</div><h3>Mesas / Cuentas abiertas</h3>${opened.map(t=>`<div class="card row"><span>Mesa ${t.number}</span><b>${money(bill(t))}</b><button onclick="s.selected=${t.number};s.adminTab='cuentas';render()">Ver</button></div>`).join('')|| (s.syncStatus==='error'?'<p class="muted">No se pudo confirmar el estado de las mesas. Revisa el mensaje de sincronización.</p>':'<p class="muted">Sin cuentas abiertas en Supabase</p>')}`;
 if(a==='cuentas'){let t=table(s.selected);return `${tableButtons()}<div class="card"><h3>Mesa ${t.number}</h3>${t.items.map((x,i)=>`<div class="row orderline"><span>${i+1}. ${esc(x.name)} ${x.gift?'· Cortesía':''}</span><b>${money(x.gift?0:x.price*x.qty)}</b></div>`).join('')}<hr class="divider"><div class="row"><b>Total</b><b>${money(bill(t))}</b></div><div class="actions"><button class="primary" onclick="orderEntryFor(s.selected)">+ Agregar platillos</button><button onclick="adjust('discount')">Descuento</button><button onclick="adjust('price')">Cambiar precio</button><button onclick="adjust('gift')">Cortesía</button><button onclick="adjust('addgift')">+ Platillo regalo</button><button onclick="adjust('free')">Cuenta en $0</button><button onclick="adjust('restore')">Restaurar</button></div><p class="muted">Los ajustes quedan registrados en la actividad.</p></div>`}
 if(a==='pedidos')return caja();if(a==='actividad')return `<h3>Actividad reciente</h3>${data.events.map(x=>`<div class="card small">${esc(x.time)} · ${esc(x.text)}</div>`).join('')||'Sin actividad'}`;
 if(a==='flash')return flashAdmin();
@@ -210,12 +265,12 @@ function medinvent(){if(!(data.settings.medinvent||window.BD_CONFIG?.medinventUr
 let lastRemoteTablesSnapshot='',latestTableRequest=0,latestTableApplied=0,rerenderSharedTables=false;
 function resetSharedTablesView(){
   lastRemoteTablesSnapshot='';latestTableRequest=0;latestTableApplied=0;rerenderSharedTables=true;
-  s.syncStatus='pending';s.syncError='';s.lastSyncAt=null;
+  s.syncStatus='pending';s.syncError='';s.lastSyncAt=null;s.remoteOpenCount=null;s.remoteTableCount=null;
   for(const t of data.tables){t.open=false;t.items=[];t.adjust=0;t.remoteCuentaId=null;}
 }
 function staffSyncBadge(){
   if(!s.authVerified||!['mesera','caja','admin'].includes(s.view))return '';
-  const text=s.syncStatus==='ok'?'Mesas sincronizadas · '+new Date(s.lastSyncAt).toLocaleTimeString('es-MX'):
+  const text=s.syncStatus==='ok'?'Supabase · '+s.remoteOpenCount+' cuentas abiertas de '+s.remoteTableCount+' mesas · '+new Date(s.lastSyncAt).toLocaleTimeString('es-MX'):
     s.syncStatus==='error'?'Sin sincronización: '+s.syncError:'Consultando mesas de Supabase…';
   const color=s.syncStatus==='error'?'#9a2633':'#637266';
   return `<div id="bd-sync-state" aria-live="polite" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;max-width:1400px;margin:3px auto 0;padding:0 20px;font-size:11px;color:${color}"><span>${esc(text)}</span><button type="button" class="link" style="font-size:11px;padding:4px" onclick="syncNow()">↻ Actualizar mesas</button></div>`;
@@ -228,42 +283,67 @@ function handleSyncError(e){
   updateSyncBadge();
   console.warn('Error sincronizando mesas de Supabase:',message);
 }
+let bdRefreshInFlight=null;
 async function syncNow(){
   if(!window.BD||!s.authVerified)return;
   if(s.syncStatus!=='ok'){s.syncStatus='pending';updateSyncBadge();}
   try{await refreshSharedTables(true);}catch(e){handleSyncError(e)}
 }
-async function refreshSharedTables(forceRender=true){
-  if(!window.BD||!s.authVerified)return;
-  const requestId=++latestTableRequest;
-  const rows=await BD.getTables();
-  if(!Array.isArray(rows))throw Error('Respuesta de mesas no válida');
-  // Una petición antigua no puede revertir la respuesta más reciente.
-  if(requestId<latestTableApplied)return;
-  latestTableApplied=requestId;
-  const snapshot=JSON.stringify(rows);
-  if(snapshot!==lastRemoteTablesSnapshot)rerenderSharedTables=true;
-  lastRemoteTablesSnapshot=snapshot;
-  s.syncStatus='ok';s.syncError='';s.lastSyncAt=Date.now();
-  for(const r of rows){
-    let t=table(r.numero);
-    if(!t){t={id:r.numero,number:r.numero,name:'',location:'',open:false,items:[],adjust:0};data.tables.push(t);}
-    t.name=r.nombre||'';t.open=Boolean(r.abierta);t.remoteCuentaId=r.cuenta_id||null;
-    t.items=(r.items||[]).map(x=>({...x,gift:false,origin:'Pedido en Supabase'}));t.adjust=0;
+function refreshSharedTables(forceRender=true,forceFresh=false){
+  if(!window.BD||!s.authVerified)return Promise.resolve([]);
+  // Solo una consulta activa: respuestas antiguas no sobrescriben las nuevas.
+  if(bdRefreshInFlight){
+    // Después de abrir/cobrar/agregar, esperar la lectura previa y consultar DE NUEVO.
+    return forceFresh?bdRefreshInFlight.catch(()=>{}).then(()=>refreshSharedTables(forceRender,true)):bdRefreshInFlight;
   }
-  const ids=new Set(rows.map(x=>x.numero));
-  data.tables=data.tables.filter(t=>ids.has(t.number));
-  if(!table(s.selected))s.selected=data.tables[0]?.number||1;
-  // Nunca persistir mesas remotas en localStorage.
-  if(forceRender&&['mesera','caja','admin'].includes(s.view)){
-    const focused=document.activeElement;
-    if(!focused||!['INPUT','TEXTAREA','SELECT'].includes(focused.tagName)){
-      if(rerenderSharedTables){rerenderSharedTables=false;render();}
-      else updateSyncBadge();
-    }else updateSyncBadge();
-  }
-  return rows;
+  bdRefreshInFlight=(async()=>{
+    const requestId=++latestTableRequest;
+    const rows=await BD.getTables();
+    if(!Array.isArray(rows))throw Error('Supabase devolvió mesas en un formato inesperado');
+    if(requestId<latestTableApplied)return rows;
+    latestTableApplied=requestId;
+    const snapshot=JSON.stringify(rows);
+    if(snapshot!==lastRemoteTablesSnapshot)rerenderSharedTables=true;
+    lastRemoteTablesSnapshot=snapshot;
+    s.syncStatus='ok';s.syncError='';s.lastSyncAt=Date.now();
+    s.remoteOpenCount=rows.filter(r=>r.abierta===true||r.abierta==='true').length;
+    s.remoteTableCount=rows.length;
+    for(const r of rows){
+      const n=Number(r.numero);
+      if(!Number.isInteger(n)||n<1)continue;
+      let t=table(n);
+      if(!t){t={id:n,number:n,name:'',location:'',open:false,items:[],adjust:0};data.tables.push(t);}
+      t.name=r.nombre||'';
+      t.open=r.abierta===true||r.abierta==='true';
+      t.remoteCuentaId=r.cuenta_id||null;
+      t.items=(Array.isArray(r.items)?r.items:[]).map(x=>({...x,qty:Number(x.qty),price:Number(x.price),gift:false,origin:'Pedido en Supabase'}));
+      t.adjust=0;
+    }
+    const ids=new Set(rows.map(x=>Number(x.numero)));
+    data.tables=data.tables.filter(t=>ids.has(Number(t.number)));
+    if(!table(s.selected))s.selected=data.tables[0]?.number||1;
+    if(forceRender&&['mesera','caja','admin'].includes(s.view)){
+      const focused=document.activeElement;
+      // No borrar texto de observaciones mientras alguien está escribiendo.
+      if(!focused||!['INPUT','TEXTAREA','SELECT'].includes(focused.tagName)){
+        if(rerenderSharedTables){rerenderSharedTables=false;render();}
+        else updateSyncBadge();
+      }else updateSyncBadge();
+    }
+    return rows;
+  })().finally(()=>{bdRefreshInFlight=null;});
+  return bdRefreshInFlight;
 }
+// Al salir de un campo, aplicar cambios que llegaron mientras se escribía.
+document.addEventListener('focusout',()=>{
+  if(!rerenderSharedTables||!s.authVerified||!['mesera','caja','admin'].includes(s.view))return;
+  setTimeout(()=>{
+    const active=document.activeElement;
+    if(!active||!['INPUT','TEXTAREA','SELECT'].includes(active.tagName)){
+      if(rerenderSharedTables){rerenderSharedTables=false;render();}
+    }
+  },0);
+});
 // Comprueba la cuenta compartida también al entrar a una pantalla y al volver a la pestaña.
 setInterval(()=>{
   if(s.authVerified&&['mesera','caja','admin'].includes(s.view))void syncNow();
@@ -274,7 +354,7 @@ document.addEventListener('visibilitychange',()=>{
 window.addEventListener('focus',()=>{
   if(s.authVerified)void syncNow();
 });
-function render(){document.title='Doña Estela · '+s.view;let view={menu,checkout,sent,login:loginView,mesera,caja,admin}[s.view]||menu;$('#app').innerHTML=renderHeader()+`<main>${staffSyncBadge()}${s.notice?`<div class="notice">${esc(s.notice)} <button class="link" onclick="s.notice='';render()">×</button></div>`:''}${view()}</main>`;if(s.view==='admin'&&s.adminTab==='productos')fillProduct();if(s.view==='caja'&&s.pay)setTimeout(()=>$('#payment')?.scrollIntoView({block:'nearest'}),0)}
+function render(){bdRecordNavigation();document.title='Doña Estela · '+s.view;let view={menu,checkout,sent,login:loginView,mesera,caja,admin}[s.view]||menu;$('#app').innerHTML=renderHeader()+navBackBar()+`<main>${staffSyncBadge()}${s.notice?`<div class="notice">${esc(s.notice)} <button class="link" onclick="s.notice='';render()">×</button></div>`:''}${view()}</main>`;if(s.view==='admin'&&s.adminTab==='productos')fillProduct();if(s.view==='caja'&&s.pay)setTimeout(()=>$('#payment')?.scrollIntoView({block:'nearest'}),0)}
 if(window.BD){BD.identity().then(user=>user?BD.roleFor(user):null).then(role=>{
   if(!role)return;
   s.staffRole=role.role;s.staffUser='Sesión Supabase';s.authVerified=true;s.authPerms=role.permissions;
