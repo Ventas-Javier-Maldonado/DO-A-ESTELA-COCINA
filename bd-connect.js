@@ -8,7 +8,20 @@ window.BD = (() => {
   let session=null;
   try{session=JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null')}catch(_e){}
   const query=(table,items)=>'/rest/v1/'+table+'?'+new URLSearchParams(items).toString();
+  async function refreshSessionIfNeeded(){
+    if(!session?.refresh_token || (session.expires_at||0)>Date.now()+45000)return;
+    const res=await fetch(BASE+'/auth/v1/token?grant_type=refresh_token',{
+      method:'POST',headers:{apikey:cfg.publishableKey,'Content-Type':'application/json'},
+      body:JSON.stringify({refresh_token:session.refresh_token}),cache:'no-store'
+    });
+    const next=await res.json().catch(()=>({}));
+    if(!res.ok||!next.access_token){session=null;sessionStorage.removeItem(SESSION_KEY);throw Error('Sesión vencida. Vuelve a iniciar sesión.');}
+    session={access_token:next.access_token,refresh_token:next.refresh_token,expires_at:Date.now()+(next.expires_in||3600)*1000};
+    sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));
+  }
+
   async function call(path,options={}){
+    if(session?.refresh_token && !path.startsWith('/auth/v1/token')) await refreshSessionIfNeeded();
     const controller=new AbortController(),tm=setTimeout(()=>controller.abort(),TIMEOUT);
     const headers={'apikey':cfg.publishableKey,'Content-Type':'application/json',...options.headers};
     if(session?.access_token)headers.Authorization='Bearer '+session.access_token;
@@ -68,9 +81,22 @@ window.BD = (() => {
     if(!session?.access_token)throw Error('Inicia sesión primero.');
     return call(query('bd_productos',{id:'eq.'+p.remoteId,negocio_id:'eq.'+BIZ}),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({nombre:p.name,categoria:p.cat,descripcion:p.description,precio:p.price,activo:p.active,disponible:p.active&&p.price!==null})});
   }
+  async function rpc(name, payload={}){
+    if(!session?.access_token)throw Error('Inicia sesión con Supabase antes de operar.');
+    return call('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(payload)});
+  }
+  async function getTables(){return rpc('bd_estela_ver_mesas');}
+  async function openTable(number){return rpc('bd_estela_abrir_mesa',{p_numero:number});}
+  async function newTable(name){return rpc('bd_estela_agregar_mesa',{p_nombre:name||null});}
+  async function placeTableOrder(number,items,operationId){
+    return rpc('bd_estela_agregar_pedido_mesa',{p_numero:number,p_items:items.map(x=>({id:x.id,qty:x.qty,obs:x.obs||''})),p_operacion_id:operationId});
+  }
+  async function chargeTable(accountId,method,operationId,reference=''){
+    return rpc('bd_estela_cobrar_mesa',{p_cuenta_id:accountId,p_metodo:method,p_operacion_id:operationId,p_referencia:reference});
+  }
   async function resetPassword(email){
     const redirect=cfg.publicMenuUrl;
     return call('/auth/v1/recover',{method:'POST',body:JSON.stringify({email,redirect_to:redirect})});
   }
-  return {cfg,publicProducts,publicPromotions,identity,signIn,signOut,patchProduct,resetPassword,roleFor};
+  return {cfg,publicProducts,publicPromotions,identity,signIn,signOut,patchProduct,resetPassword,roleFor,getTables,openTable,newTable,placeTableOrder,chargeTable};
 })();
