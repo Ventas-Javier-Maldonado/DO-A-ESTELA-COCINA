@@ -21,14 +21,14 @@ if(!data.visualV3){ for(const p of data.products){const desired=imageV3[p.name];
 const imageV4 = {"Chilaquiles rojos": "platillo_01", "Chilaquiles con huevo o pollo": "platillo_02", "Omelette": "platillo_03", "Huevos revueltos": "platillo_04", "Huevos estrellados (2)": "platillo_05", "Desayuno completo": "platillo_06", "Platillo del día": "platillo_07", "Enchiladas (4)": "platillo_08", "Sopes (3)": "platillo_09", "Flautas (4)": "platillo_10", "Tostada de pollo o pierna": "platillo_11", "Guiso pollo o cerdo (2 personas)": "platillo_12", "Guiso pollo o cerdo (4 personas)": "platillo_13", "Guiso de res (2 personas)": "platillo_14", "Guiso de res (4 personas)": "platillo_15", "Arroz o espagueti chico": "platillo_16", "Arroz o espagueti grande": "platillo_17", "Consentida": "platillo_18", "Chicken Torta": "platillo_19", "Jamonísima": "platillo_20", "Tres sabores": "platillo_21", "Huevona": "platillo_22", "Chilanga": "platillo_23", "Chilanga plus": "platillo_24", "Jarra de agua fresca": "platillo_25", "Café de olla": "platillo_26", "Jugo de naranja": "platillo_27", "Jugo de zanahoria": "platillo_28", "Jugo combinado": "platillo_29", "Jugo verde": "platillo_30", "Chocomilk": "platillo_31", "Licuado de fresa": "platillo_32", "Refresco 500 ml": "platillo_33", "Refresco 600 ml": "platillo_34", "Pozole": "platillo_35", "Menudo": "platillo_36"};
 if(!data.visualV4){for(const p of data.products){if(imageV4[p.name] && !String(p.image||'').startsWith('personalizada_')) p.image=imageV4[p.name];}data.visualV4=true;safeStorage.set(JSON.stringify(data));}
 if(!Array.isArray(data.flashPromos))data.flashPromos=[];
-const s={cartOpen:false,view:'menu',category:'Todas',expanded:null,cart:[],service:'mesa',table:1,selected:1,adminTab:'inicio',staffRole:null,staffUser:null,menuOpen:false,loginRole:'',notice:'',draft:[],orderDetail:null,pay:null,permissionRole:'Cajera',showPassword:false,authVerified:false,authPerms:[],demoPreview:false};
+const s={cartOpen:false,view:'menu',category:'Todas',expanded:null,cart:[],service:'mesa',table:1,selected:1,adminTab:'inicio',staffRole:null,staffUser:null,menuOpen:false,loginRole:'',notice:'',draft:[],orderDetail:null,pay:null,permissionRole:'Cajera',showPassword:false,authVerified:false,authPerms:[],demoPreview:false,syncStatus:'pending',syncError:'',lastSyncAt:null};
 const qrTableNumber=new URLSearchParams(location.search).get('mesa');if(qrTableNumber&&data.tables.some(t=>t.number===Number(qrTableNumber))){s.table=Number(qrTableNumber);s.service='mesa'}
 const $=q=>document.querySelector(q), esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),money=x=>'$'+Number(x||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}), save=()=>safeStorage.set(JSON.stringify(data));
 function note(x){s.notice=x;render()}function log(x){data.events.unshift({time:new Date().toLocaleString('es-MX'),text:x});data.events=data.events.slice(0,250);save()}
 function table(n){return data.tables.find(t=>t.number===Number(n))}function total(items){return items.reduce((v,x)=>v+(x.gift?0:x.price*x.qty),0)}function bill(t){return Math.max(0,total(t.items)-(t.adjust||0))}
 function photo(p){if(p.imagen_url&&/^https:\/\/[^\s"'<>]+$/i.test(p.imagen_url))return esc(p.imagen_url);return 'assets/'+(p.image||'enchiladas')+'.webp'}function product(id){return data.products.find(p=>p.id===Number(id))}
 function renderHeader(){const customer=s.view==='menu';return `<header class="top ${customer?'top-customer':''}"><div class="header-brand"><small>${s.staffRole?'PERSONAL · '+esc(s.staffRole.toUpperCase()):'COCINA ECONÓMICA'}</small>${customer?'':`<h1>Doña Estela</h1><p>${s.staffRole?'Panel de '+esc(s.staffRole):'Sabor casero, como en casa'}</p>`}</div><button class="hamb" onclick="toggleMenu()" aria-label="Abrir menú">☰</button></header>${s.menuOpen?`<div class="dropdown">${['Menú','Mesera','Caja','Administrador'].map((x,i)=>`<button onclick="go('${['menu','mesera','caja','admin'][i]}')">${x}</button>`).join('')}${s.staffRole?'<hr class="divider"><button onclick="logout()">Cerrar sesión</button>':''}</div>`:''}`}
-function toggleMenu(){s.menuOpen=!s.menuOpen;render()}function go(v){s.menuOpen=false;if(v==='menu'){s.view='menu';render();return}if(!s.staffRole){s.loginRole=v;s.view='login';render();return}if(!allowedView(v)){note('Este usuario no tiene permiso para esta pantalla');return}s.view=v;render()}
+function toggleMenu(){s.menuOpen=!s.menuOpen;render()}function go(v){s.menuOpen=false;if(v==='menu'){s.view='menu';render();return}if(!s.staffRole){s.loginRole=v;s.view='login';render();return}if(!allowedView(v)){note('Este usuario no tiene permiso para esta pantalla');return}s.view=v;render();void syncNow();}
 function allowedView(v){if(!s.authVerified)return false;if(s.staffRole==='Administrador')return true;if(v==='caja')return s.authPerms.includes('cobrar_cuentas');if(v==='mesera')return s.authPerms.some(x=>['ver_mesas','agregar_pedidos','abrir_cuentas'].includes(x));return false}
 async function login(){
   const username=$('#username')?.value.trim(),password=$('#password')?.value;
@@ -44,13 +44,14 @@ async function login(){
     s.authPerms=role.permissions;
     s.demoPreview=false;
     s.view=role.role==='Administrador'?'admin':role.role==='Cajera'?'caja':'mesera';
-    s.notice='Acceso autenticado. Mesas, consumos y cobros de mesas se guardan en Supabase.';
+    resetSharedTablesView();
+    s.notice='Acceso autenticado. Consultando mesas compartidas en Supabase.';
     render();
-    refreshSharedTables().catch(e=>note('No se pudieron cargar las mesas: '+e.message));
+    void syncNow();
   }catch(e){note('No se pudo ingresar: '+(e?.message||'verifica tu contraseña de Supabase'))}
   finally{if(button?.isConnected){button.disabled=false;button.textContent='Ingresar'}}
 }
-function logout(){if(window.BD)BD.signOut();s.staffRole=null;s.staffUser=null;s.authVerified=false;s.authPerms=[];s.demoPreview=false;s.view='menu';s.menuOpen=false;render()}
+function logout(){if(window.BD)BD.signOut();s.staffRole=null;s.staffUser=null;s.authVerified=false;s.authPerms=[];s.demoPreview=false;s.view='menu';s.menuOpen=false;resetSharedTablesView();render()}
 function loginView(){return `<div class="card login"><h2>Acceso del personal</h2><p class="muted">${esc(({mesera:'Mesera',caja:'Caja',admin:'Administrador'})[s.loginRole]||'Personal')}</p><label>Usuario</label><input id="username" autocomplete="username" placeholder="admin, cajera, mesera1 o mesera2"><label>Contraseña</label><div class="inline"><input id="password" type="${s.showPassword?'text':'password'}" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()"><button onclick="s.showPassword=!s.showPassword;document.querySelector('#password').type=s.showPassword?'text':'password'" aria-label="Mostrar u ocultar contraseña">◉</button></div><button class="primary" onclick="login()">Ingresar</button><p class="muted">Utiliza la contraseña que estableciste para este usuario en Supabase.</p></div>`}
 function categories(){let cats=[...new Set(data.products.filter(x=>x.active).map(x=>x.cat))];let catImage={'Desayunos':1,'Comidas':2,'Cocina económica':2,'Tortas':3,'Bebidas':4,'Pozole y menudo':5,'Postres':6};return `<nav class="catstrip" aria-label="Categorías del menú"><button class="cat-all ${s.category==='Todas'?'active':''}" onclick="category('Todas')"><span>Ver todo<br>el menú</span></button>${cats.map(c=>`<button class="${s.category===c?'active':''}" onclick="category('${esc(c)}')"><img src="assets/categoria_${catImage[c]||1}.webp" alt=""><span>${esc(c)}</span></button>`).join('')}</nav>`}
 function category(x){s.category=x;s.expanded=null;render()}function expand(id){s.expanded=s.expanded===id?null:id;render()}
@@ -76,8 +77,10 @@ async function addTable(){
 }
 async function openTable(){
   if(!s.authVerified||!window.BD)return note('Inicia sesión para abrir esta mesa.');
-  try{await BD.openTable(s.selected);await refreshSharedTables();note('Mesa abierta en Supabase.');}
-  catch(e){note('No se abrió la mesa: '+e.message)}
+  try{await BD.openTable(s.selected);}
+  catch(e){return note('No se abrió la mesa: '+e.message)}
+  try{await refreshSharedTables();note('Mesa abierta en Supabase.');}
+  catch(e){handleSyncError(e);note('Mesa abierta en Supabase; no se pudo actualizar la pantalla. Pulsa «Actualizar mesas».')}
 }
 // V19 · Confirmación inmediata y control del pedido pendiente ARRIBA de los platillos.
 // Sin enviar ni guardar importes por cuenta propia: la RPC valida todo en Supabase.
@@ -142,9 +145,10 @@ async function sendDraft(){
   try{
     await BD.placeTableOrder(s.selected,items,opId);
     s.draft=[];s.pendingDraftOp=null;
-    await refreshSharedTables(false);
+    let refreshed=true;
+    try{await refreshSharedTables(false);}catch(e){refreshed=false;handleSyncError(e);}
     if(s.orderReturnView){s.view=s.orderReturnView;s.orderReturnView=null;}
-    note('Pedido registrado en Supabase. Ya puede verlo Caja.');
+    note(refreshed?'Pedido registrado en Supabase. Caja puede consultarlo.':'Pedido registrado en Supabase. Falta actualizar la pantalla de Caja; pulsa «Actualizar mesas».');
   }
   catch(e){note('Pedido NO registrado: '+(e?.message||e));}
   finally{s.sendingDraft=false;}
@@ -169,7 +173,9 @@ async function closeBill(){
     s.pendingPayOp={cuenta:t.remoteCuentaId,id:op};
     await BD.chargeTable(t.remoteCuentaId,metodo,op,$('#reference')?.value||'');
     s.pendingPayOp=null;
-    s.pay=null;await refreshSharedTables();note('Pago registrado en Supabase. Cuenta cerrada para todo el personal.');
+    s.pay=null;
+    try{await refreshSharedTables();note('Pago registrado en Supabase. Cuenta cerrada para todo el personal.');}
+    catch(e){handleSyncError(e);note('Pago registrado en Supabase. Actualiza las mesas para ver el cierre.');}
   }catch(e){note('No se cobró la mesa: '+e.message)}
 }
 function admin(){let tabs=[['inicio','Inicio'],['cuentas','Cuentas'],['pedidos','Pedidos'],['actividad','Actividad reciente'],['productos','Productos'],['flash','Promociones Flash'],['clientes','Clientes'],['reportes','Reportes'],['qr','Mesas y QR'],['permisos','Permisos'],['config','Configuración']];return `<section class="section"><div class="row"><h2>Administrador</h2><button onclick="medinvent()">MedInvent Pro ↗</button></div><div class="tabs">${tabs.map(([id,n])=>`<button class="${s.adminTab===id?'active':''}" onclick="s.adminTab='${id}';render()">${n}</button>`).join('')}</div>${adminContent()}</section>`}
@@ -199,41 +205,83 @@ function saveSettings(){Object.keys(data.settings).filter(k=>$('#setting_'+k)).f
 function saveBaseUrl(){data.settings.baseUrl=$('#baseUrl').value.trim();save();note('Dirección pública guardada.')}
 function qrUrl(n){let base=data.settings.baseUrl.replace(/\/$/,'');return base+'/?mesa='+n}
 function medinvent(){if(!(data.settings.medinvent||window.BD_CONFIG?.medinventUrl))return note('Configura primero la dirección de MedInvent Pro en Administrador → Configuración.');const url=(data.settings.medinvent||window.BD_CONFIG?.medinventUrl||'').trim();if(!/^https:\/\/[^\s]+$/i.test(url))return note('Configura una dirección HTTPS válida de MedInvent Pro.');if(confirm('Abrir MedInvent Pro con su inicio de sesión independiente?'))window.open(url,'_blank','noopener,noreferrer')}
-let lastRemoteTablesSnapshot='';
+// V20: Supabase es la fuente única para TODAS las pantallas del personal.
+// No mostrar como disponibles mesas guardadas en el navegador mientras falte la sincronización.
+let lastRemoteTablesSnapshot='',latestTableRequest=0,latestTableApplied=0,rerenderSharedTables=false;
+function resetSharedTablesView(){
+  lastRemoteTablesSnapshot='';latestTableRequest=0;latestTableApplied=0;rerenderSharedTables=true;
+  s.syncStatus='pending';s.syncError='';s.lastSyncAt=null;
+  for(const t of data.tables){t.open=false;t.items=[];t.adjust=0;t.remoteCuentaId=null;}
+}
+function staffSyncBadge(){
+  if(!s.authVerified||!['mesera','caja','admin'].includes(s.view))return '';
+  const text=s.syncStatus==='ok'?'Mesas sincronizadas · '+new Date(s.lastSyncAt).toLocaleTimeString('es-MX'):
+    s.syncStatus==='error'?'Sin sincronización: '+s.syncError:'Consultando mesas de Supabase…';
+  const color=s.syncStatus==='error'?'#9a2633':'#637266';
+  return `<div id="bd-sync-state" aria-live="polite" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;max-width:1400px;margin:3px auto 0;padding:0 20px;font-size:11px;color:${color}"><span>${esc(text)}</span><button type="button" class="link" style="font-size:11px;padding:4px" onclick="syncNow()">↻ Actualizar mesas</button></div>`;
+}
+function updateSyncBadge(){const el=document.getElementById('bd-sync-state');if(el)el.outerHTML=staffSyncBadge();}
+function handleSyncError(e){
+  const message=String(e?.message||e||'No se pudo consultar el servidor');
+  if(!s.authVerified)return;
+  s.syncStatus='error';s.syncError=message;
+  updateSyncBadge();
+  console.warn('Error sincronizando mesas de Supabase:',message);
+}
+async function syncNow(){
+  if(!window.BD||!s.authVerified)return;
+  if(s.syncStatus!=='ok'){s.syncStatus='pending';updateSyncBadge();}
+  try{await refreshSharedTables(true);}catch(e){handleSyncError(e)}
+}
 async function refreshSharedTables(forceRender=true){
   if(!window.BD||!s.authVerified)return;
+  const requestId=++latestTableRequest;
   const rows=await BD.getTables();
   if(!Array.isArray(rows))throw Error('Respuesta de mesas no válida');
+  // Una petición antigua no puede revertir la respuesta más reciente.
+  if(requestId<latestTableApplied)return;
+  latestTableApplied=requestId;
   const snapshot=JSON.stringify(rows);
-  if(snapshot===lastRemoteTablesSnapshot)return;
+  if(snapshot!==lastRemoteTablesSnapshot)rerenderSharedTables=true;
   lastRemoteTablesSnapshot=snapshot;
+  s.syncStatus='ok';s.syncError='';s.lastSyncAt=Date.now();
   for(const r of rows){
     let t=table(r.numero);
-    if(!t){t={id:r.numero,number:r.numero,name:'',location:'',open:false,items:[],adjust:0};data.tables.push(t)}
+    if(!t){t={id:r.numero,number:r.numero,name:'',location:'',open:false,items:[],adjust:0};data.tables.push(t);}
     t.name=r.nombre||'';t.open=Boolean(r.abierta);t.remoteCuentaId=r.cuenta_id||null;
     t.items=(r.items||[]).map(x=>({...x,gift:false,origin:'Pedido en Supabase'}));t.adjust=0;
   }
   const ids=new Set(rows.map(x=>x.numero));
   data.tables=data.tables.filter(t=>ids.has(t.number));
   if(!table(s.selected))s.selected=data.tables[0]?.number||1;
-  // No persistir mesas de servidor en localStorage: la base es la fuente única.
+  // Nunca persistir mesas remotas en localStorage.
   if(forceRender&&['mesera','caja','admin'].includes(s.view)){
     const focused=document.activeElement;
-    if(!focused||!['INPUT','TEXTAREA','SELECT'].includes(focused.tagName))render();
+    if(!focused||!['INPUT','TEXTAREA','SELECT'].includes(focused.tagName)){
+      if(rerenderSharedTables){rerenderSharedTables=false;render();}
+      else updateSyncBadge();
+    }else updateSyncBadge();
   }
+  return rows;
 }
+// Comprueba la cuenta compartida también al entrar a una pantalla y al volver a la pestaña.
 setInterval(()=>{
-  if(s.authVerified&&['mesera','caja','admin'].includes(s.view)){
-    refreshSharedTables().catch(e=>console.warn('No se pudo consultar mesas:',e.message));
-  }
-},6000);
-function render(){document.title='Doña Estela · '+s.view;let view={menu,checkout,sent,login:loginView,mesera,caja,admin}[s.view]||menu;$('#app').innerHTML=renderHeader()+`<main>${s.notice?`<div class="notice">${esc(s.notice)} <button class="link" onclick="s.notice='';render()">×</button></div>`:''}${view()}</main>`;if(s.view==='admin'&&s.adminTab==='productos')fillProduct();if(s.view==='caja'&&s.pay)setTimeout(()=>$('#payment')?.scrollIntoView({block:'nearest'}),0)}
+  if(s.authVerified&&['mesera','caja','admin'].includes(s.view))void syncNow();
+},4000);
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&s.authVerified)void syncNow();
+});
+window.addEventListener('focus',()=>{
+  if(s.authVerified)void syncNow();
+});
+function render(){document.title='Doña Estela · '+s.view;let view={menu,checkout,sent,login:loginView,mesera,caja,admin}[s.view]||menu;$('#app').innerHTML=renderHeader()+`<main>${staffSyncBadge()}${s.notice?`<div class="notice">${esc(s.notice)} <button class="link" onclick="s.notice='';render()">×</button></div>`:''}${view()}</main>`;if(s.view==='admin'&&s.adminTab==='productos')fillProduct();if(s.view==='caja'&&s.pay)setTimeout(()=>$('#payment')?.scrollIntoView({block:'nearest'}),0)}
 if(window.BD){BD.identity().then(user=>user?BD.roleFor(user):null).then(role=>{
   if(!role)return;
   s.staffRole=role.role;s.staffUser='Sesión Supabase';s.authVerified=true;s.authPerms=role.permissions;
   s.demoPreview=false;
+  resetSharedTablesView();
   if(s.view==='login')s.view=role.role==='Administrador'?'admin':role.role==='Cajera'?'caja':'mesera';
   render();
-  refreshSharedTables().catch(e=>console.warn('Mesas no sincronizadas',e.message));
+  void syncNow();
 }).catch(()=>{BD.signOut().catch(()=>{});});}
 try{const params=new URLSearchParams(location.search);if(params.has('mesa')){let n=Number(params.get('mesa'));if(table(n)){s.table=n;s.service='mesa'}}render()}catch(err){console.error('Error al iniciar Doña Estela:',err);document.getElementById('app').innerHTML='<main style="padding:24px;font-family:Arial;color:#274735"><h2>Doña Estela</h2><p>No se pudo iniciar la demostración. Recarga la página o abre el archivo desde un servidor local.</p><pre style="white-space:pre-wrap"></pre></main>';document.querySelector('#app pre').textContent=String(err)}
