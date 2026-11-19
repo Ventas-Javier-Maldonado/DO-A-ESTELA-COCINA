@@ -320,3 +320,500 @@ main{width:100%;max-width:none;margin:0;padding:0}
 .bd-return-bar button{border:1px solid #c5a36a;background:#233f32;color:#f7ecdd;font-weight:600;border-radius:7px;padding:6px 13px;font-size:12px;min-height:30px}
 .bd-return-bar button:hover,.bd-return-bar button:focus-visible{background:#751d25;color:#fff}
 @media(max-width:560px){.bd-return-bar{padding:5px 12px;min-height:38px}.bd-return-bar button{font-size:12px;min-height:29px;padding:5px 12px}}
+
+/* V22 · Caja central: operación limpia, rápida y adaptable. */
+.cash-section {
+  max-width: 1400px;
+}
+
+.cash-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--oro);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.cash-status > div:first-child strong {
+  display: block;
+  color: var(--verde);
+  font-size: 14px;
+  letter-spacing: .5px;
+}
+
+.cash-status > div:first-child small {
+  display: block;
+  margin-top: 4px;
+}
+
+.cash-status.is-open {
+  border-left: 5px solid #2f6d4d;
+}
+
+.cash-status.is-closed {
+  border-left: 5px solid var(--vino);
+}
+
+.cash-fund {
+  min-width: 110px;
+  text-align: right;
+}
+
+.cash-fund small,
+.cash-fund strong {
+  display: block;
+}
+
+.cash-fund strong {
+  font-size: 18px;
+  color: var(--vino);
+  margin-top: 3px;
+}
+
+.cash-status-actions,
+.cash-quick-actions,
+.cash-form-actions,
+.cash-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.cash-status-actions button,
+.cash-quick-actions button,
+.cash-form-actions button,
+.cash-account-actions button {
+  min-height: 36px;
+}
+
+.cash-quick-actions {
+  margin: 12px 0 16px;
+}
+
+.cash-quick-actions button {
+  flex: 1 1 150px;
+  font-weight: 600;
+}
+
+.cash-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 16px;
+}
+
+.cash-summary-grid > div {
+  border: 1px solid #d8c5a6;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 10px 12px;
+}
+
+.cash-summary-grid small,
+.cash-summary-grid strong {
+  display: block;
+}
+
+.cash-summary-grid strong {
+  margin-top: 5px;
+  color: var(--vino);
+  font-size: 16px;
+}
+
+.cash-search-label {
+  margin: 14px 0 4px;
+  font-weight: 600;
+}
+
+.cash-search {
+  min-height: 42px;
+}
+
+.cash-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 7px;
+  border-bottom: 1px solid #d5c29f;
+  padding-bottom: 5px;
+}
+
+.cash-section-title h3 {
+  margin: 0;
+}
+
+.cash-account-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.cash-account-card {
+  border: 1px solid #d9c7a9;
+  border-radius: 9px;
+  background: #fffdf8;
+  padding: 11px;
+  min-width: 0;
+}
+
+.cash-account-card[hidden] {
+  display: none !important;
+}
+
+.cash-account-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cash-account-main > div {
+  min-width: 0;
+}
+
+.cash-account-main strong:first-child {
+  display: block;
+  color: var(--verde);
+  font-size: 14px;
+}
+
+.cash-account-main small {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.cash-total {
+  color: var(--vino);
+  white-space: nowrap;
+  font-size: 16px;
+}
+
+.cash-account-meta {
+  color: #7d6c58;
+  font-size: 11px;
+  margin: 8px 0;
+}
+
+.cash-account-actions {
+  justify-content: flex-start;
+  border-top: 1px solid #eee2d0;
+  padding-top: 8px;
+}
+
+.cash-account-actions button {
+  flex: 1 1 auto;
+  font-size: 11px;
+}
+
+.cash-account-actions .primary {
+  min-width: 100px;
+}
+
+.cash-secondary {
+  margin: 14px 0;
+  border: 1px solid #d9c7a9;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 10px;
+}
+
+.cash-secondary summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--verde);
+}
+
+.cash-form-card {
+  max-width: 620px;
+  margin: 14px auto;
+  padding: 16px;
+}
+
+.cash-form-card > p {
+  color: #786956;
+  font-size: 12px;
+}
+
+.cash-form-card input {
+  min-height: 42px;
+}
+
+.cash-form-actions {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.cash-cut-card {
+  max-width: 680px;
+  margin: 14px auto;
+  padding: 15px;
+}
+
+.cash-cut-lines > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee2d0;
+}
+
+.cash-cut-lines span {
+  color: #665744;
+  font-size: 12px;
+}
+
+.cash-cut-lines b {
+  white-space: nowrap;
+}
+
+.cash-cut-expected {
+  margin-top: 5px;
+  border: 1px solid var(--oro);
+  border-radius: 7px;
+  background: #fff7e8;
+  padding: 10px !important;
+}
+
+.cash-cut-expected span,
+.cash-cut-expected b {
+  font-weight: 700;
+  color: var(--vino);
+}
+
+.cash-difference {
+  margin: 10px 0;
+  border-radius: 7px;
+  padding: 10px;
+  text-align: center;
+  background: #f5e6d5;
+  color: var(--vino);
+  font-weight: 700;
+}
+
+.cash-cut-done {
+  max-width: 680px;
+  margin: 14px auto;
+}
+
+.cash-detail {
+  max-width: 800px;
+  margin: 14px auto;
+  padding: 15px;
+}
+
+.cash-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.cash-detail-head h3 {
+  margin: 0;
+}
+
+.cash-detail-head small {
+  display: block;
+  margin-top: 4px;
+}
+
+.cash-detail-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid #eee2d0;
+}
+
+.cash-detail-line span {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.cash-detail-line small {
+  display: block;
+  margin-top: 3px;
+}
+
+.cash-detail-line b {
+  white-space: nowrap;
+}
+
+.cash-detail-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px 0;
+  border-top: 2px solid var(--oro);
+  font-weight: 700;
+}
+
+.cash-detail-total b {
+  color: var(--vino);
+  font-size: 20px;
+}
+
+.cash-customer-data {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #f7ecdd;
+  font-size: 12px;
+}
+
+.cash-customer-data p {
+  margin: 4px 0;
+}
+
+.cash-charge {
+  width: 100%;
+  min-height: 43px;
+  margin-top: 12px;
+  font-weight: 700;
+}
+
+.local-order {
+  border-left: 4px solid #c5a36a;
+}
+
+.print-area {
+  display: none;
+}
+
+@media(max-width:850px){
+  .cash-account-list {
+    grid-template-columns: 1fr;
+  }
+  .cash-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media(max-width:600px){
+  .cash-status {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 11px;
+  }
+  .cash-status-actions {
+    grid-column: 1 / -1;
+  }
+  .cash-status-actions button {
+    flex: 1;
+  }
+  .cash-fund {
+    min-width: 0;
+  }
+  .cash-quick-actions button {
+    flex-basis: calc(50% - 8px);
+  }
+  .cash-account-card {
+    padding: 10px;
+  }
+  .cash-account-actions button {
+    flex: 1 1 calc(50% - 8px);
+    min-height: 38px;
+  }
+  .cash-detail-head {
+    align-items: center;
+  }
+  .cash-detail-head button {
+    min-height: 35px;
+  }
+  .cash-form-actions button {
+    flex: 1;
+  }
+}
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 3mm;
+  }
+  html,
+  body {
+    width: 80mm;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #app .print-area,
+  #app .print-area * {
+    visibility: visible !important;
+  }
+  #app .print-area {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 76mm;
+    margin: 0;
+    padding: 0;
+  }
+  .thermal-ticket {
+    width: 76mm;
+    color: #000;
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10pt;
+    line-height: 1.25;
+  }
+  .thermal-ticket center {
+    margin-bottom: 3mm;
+  }
+  .thermal-ticket center strong {
+    display: block;
+    font-size: 16pt;
+    letter-spacing: .4px;
+  }
+  .thermal-ticket center small {
+    display: block;
+    color: #000 !important;
+    font-size: 8pt;
+  }
+  .thermal-ticket hr {
+    border: 0;
+    border-top: 1px dashed #000;
+    margin: 2.5mm 0;
+  }
+  .thermal-ticket p {
+    margin: 2mm 0;
+  }
+  .print-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 3mm;
+    margin: 1.5mm 0;
+  }
+  .print-item span {
+    flex: 1;
+  }
+  .print-item b {
+    white-space: nowrap;
+  }
+  .thermal-ticket > small {
+    display: block;
+    color: #000 !important;
+    font-size: 8pt;
+  }
+  .print-total {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12pt;
+    font-weight: 700;
+    margin: 2mm 0;
+  }
+}

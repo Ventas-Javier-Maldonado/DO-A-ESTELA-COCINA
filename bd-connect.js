@@ -1,102 +1,355 @@
-/* Barrio Digital: puente aislado y verificación de permisos por API de Supabase.
-   Publica solamente publishable key, nunca service_role ni contraseñas.
-   La aplicación cliente NO sustituye la validación RLS del servidor. */
+/* Barrio Digital · Doña Estela · puente seguro con Supabase.
+   Solo utiliza la llave pública y la sesión autenticada del empleado. */
 window.BD = (() => {
   'use strict';
-  const cfg=window.BD_CONFIG, BASE=cfg.supabaseUrl.replace(/\/$/,''), BIZ=cfg.negocioId;
-  const TIMEOUT=10000, SESSION_KEY='bd_estela_session_v14';
-  let session=null;
-  try{session=JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null')}catch(_e){}
-  const query=(table,items)=>'/rest/v1/'+table+'?'+new URLSearchParams(items).toString();
-  async function refreshSessionIfNeeded(){
-    if(!session?.refresh_token || (session.expires_at||0)>Date.now()+45000)return;
-    const res=await fetch(BASE+'/auth/v1/token?grant_type=refresh_token',{
-      method:'POST',headers:{apikey:cfg.publishableKey,'Content-Type':'application/json'},
-      body:JSON.stringify({refresh_token:session.refresh_token}),cache:'no-store'
+
+  const cfg = window.BD_CONFIG;
+  const BASE = cfg.supabaseUrl.replace(/\/$/, '');
+  const BIZ = cfg.negocioId;
+  const TIMEOUT = 10000;
+  const SESSION_KEY = 'bd_estela_session_v14';
+
+  let session = null;
+  try {
+    session = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+  } catch (_e) {}
+
+  const query = (table, items) => '/rest/v1/' + table + '?' + new URLSearchParams(items).toString();
+
+  async function refreshSessionIfNeeded() {
+    if (!session?.refresh_token || (session.expires_at || 0) > Date.now() + 45000) return;
+
+    const res = await fetch(BASE + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: {
+        apikey: cfg.publishableKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+      cache: 'no-store'
     });
-    const next=await res.json().catch(()=>({}));
-    if(!res.ok||!next.access_token){session=null;sessionStorage.removeItem(SESSION_KEY);throw Error('Sesión vencida. Vuelve a iniciar sesión.');}
-    session={access_token:next.access_token,refresh_token:next.refresh_token,expires_at:Date.now()+(next.expires_in||3600)*1000};
-    sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));
+
+    const next = await res.json().catch(() => ({}));
+    if (!res.ok || !next.access_token) {
+      session = null;
+      sessionStorage.removeItem(SESSION_KEY);
+      throw Error('Sesión vencida. Vuelve a iniciar sesión.');
+    }
+
+    session = {
+      access_token: next.access_token,
+      refresh_token: next.refresh_token,
+      expires_at: Date.now() + (next.expires_in || 3600) * 1000
+    };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
   }
 
-  async function call(path,options={}){
-    if(session?.refresh_token && !path.startsWith('/auth/v1/token')) await refreshSessionIfNeeded();
-    const controller=new AbortController(),tm=setTimeout(()=>controller.abort(),TIMEOUT);
-    const headers={'apikey':cfg.publishableKey,'Content-Type':'application/json',...options.headers};
-    if(session?.access_token)headers.Authorization='Bearer '+session.access_token;
-    try{
-      const res=await fetch(BASE+path,{...options,headers,signal:controller.signal,cache:'no-store'});
-      const raw=await res.text();let data=null;
-      try{data=raw?JSON.parse(raw):null}catch(_e){data=raw}
-      if(!res.ok){throw Error(typeof data==='object' ? (data?.msg||data?.message||data?.error_description||data?.error||'HTTP '+res.status):'HTTP '+res.status)}
+  async function call(path, options = {}) {
+    if (session?.refresh_token && !path.startsWith('/auth/v1/token')) {
+      await refreshSessionIfNeeded();
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT);
+    const headers = {
+      apikey: cfg.publishableKey,
+      'Content-Type': 'application/json',
+      ...options.headers
+    };
+    if (session?.access_token) headers.Authorization = 'Bearer ' + session.access_token;
+
+    try {
+      const res = await fetch(BASE + path, {
+        ...options,
+        headers,
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      const raw = await res.text();
+      let data = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch (_e) {
+        data = raw;
+      }
+      if (!res.ok) {
+        throw Error(typeof data === 'object'
+          ? (data?.msg || data?.message || data?.error_description || data?.error || 'HTTP ' + res.status)
+          : 'HTTP ' + res.status);
+      }
       return data;
-    } finally{clearTimeout(tm)}
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  async function publicProducts(){
-    const rows=await call(query('bd_productos',{select:'id,codigo,nombre,categoria,descripcion,precio,imagen_url,activo,disponible',negocio_id:'eq.'+BIZ,activo:'eq.true',order:'codigo.asc'}));
-    if(!Array.isArray(rows))throw Error('Respuesta inesperada del catálogo');
+
+  async function rpc(name, payload = {}) {
+    if (!session?.access_token) throw Error('Inicia sesión con Supabase antes de operar.');
+    return call('/rest/v1/rpc/' + name, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async function publicProducts() {
+    const rows = await call(query('bd_productos', {
+      select: 'id,codigo,nombre,categoria,descripcion,precio,imagen_url,activo,disponible',
+      negocio_id: 'eq.' + BIZ,
+      activo: 'eq.true',
+      order: 'codigo.asc'
+    }));
+    if (!Array.isArray(rows)) throw Error('Respuesta inesperada del catálogo');
     return rows;
   }
-  async function publicPromotions(){
-    return call(query('bd_promociones_flash',{select:'id,producto_id,titulo,descripcion,precio_promocion,imagen_url,inicia_en,termina_en,activa',negocio_id:'eq.'+BIZ,activa:'eq.true',order:'termina_en.asc'}));
+
+  async function publicPromotions() {
+    return call(query('bd_promociones_flash', {
+      select: 'id,producto_id,titulo,descripcion,precio_promocion,imagen_url,inicia_en,termina_en,activa',
+      negocio_id: 'eq.' + BIZ,
+      activa: 'eq.true',
+      order: 'termina_en.asc'
+    }));
   }
-  const EMAIL_ALIAS={admin:'admin@gmail.com',cajera:'cajera@gmail.com',mesera1:'mesera1@gmail.com',mesera2:'mesero2@gmail.com'};
-  async function identity(){
-    if(!session?.access_token)return null;
+
+  const EMAIL_ALIAS = {
+    admin: 'admin@gmail.com',
+    cajera: 'cajera@gmail.com',
+    mesera1: 'mesera1@gmail.com',
+    mesera2: 'mesero2@gmail.com'
+  };
+
+  async function identity() {
+    if (!session?.access_token) return null;
     return call('/auth/v1/user');
   }
-  async function roleFor(user){
-    const own='eq.'+user.id, biz='eq.'+BIZ;
-    const admin=await call(query('bd_administradores',{select:'usuario_id,rol,activo',usuario_id:own,negocio_id:biz,activo:'eq.true'}));
-    if(admin?.some(a=>['administrador','propietario'].includes(a.rol))){
-      return {role:'Administrador',permissions:['*'],user:user.id,verified:true,owner:admin.some(a=>a.rol==='propietario')};
+
+  async function roleFor(user) {
+    const own = 'eq.' + user.id;
+    const biz = 'eq.' + BIZ;
+    const admin = await call(query('bd_administradores', {
+      select: 'usuario_id,rol,activo',
+      usuario_id: own,
+      negocio_id: biz,
+      activo: 'eq.true'
+    }));
+
+    if (admin?.some(a => ['administrador', 'propietario'].includes(a.rol))) {
+      return {
+        role: 'Administrador',
+        permissions: ['*'],
+        user: user.id,
+        verified: true,
+        owner: admin.some(a => a.rol === 'propietario')
+      };
     }
-    const links=await call(query('bd_restaurante_accesos',{select:'nombre_usuario,estado,requiere_cambio_clave',usuario_id:own,negocio_id:biz}));
-    const link=links?.[0];
-    if(!link)throw Error('Este usuario no está vinculado con Doña Estela.');
-    if(link.estado!=='activo')throw Error('La cuenta todavía está invitada o suspendida. No tiene acceso operativo.');
-    if(link.requiere_cambio_clave)throw Error('Debes completar el cambio inicial de contraseña antes de operar.');
-    const staff=await call(query('bd_restaurante_personal',{select:'rol,activo',usuario_id:own,negocio_id:biz}));
-    if(!staff?.[0]?.activo)throw Error('El propietario no ha activado este empleado.');
-    const p=await call(query('bd_restaurante_permisos',{select:'permiso,habilitado',usuario_id:own,negocio_id:biz,habilitado:'eq.true'}));
-    const permitted=(p||[]).map(x=>x.permiso);
-    if(!permitted.length)throw Error('El propietario todavía no ha autorizado funciones para esta cuenta.');
-    return {role:staff[0].rol==='caja'?'Cajera':'Mesera',permissions:permitted,user:user.id,verified:true,owner:false};
+
+    const links = await call(query('bd_restaurante_accesos', {
+      select: 'nombre_usuario,estado,requiere_cambio_clave',
+      usuario_id: own,
+      negocio_id: biz
+    }));
+    const link = links?.[0];
+    if (!link) throw Error('Este usuario no está vinculado con Doña Estela.');
+    if (link.estado !== 'activo') throw Error('La cuenta todavía está invitada o suspendida. No tiene acceso operativo.');
+    if (link.requiere_cambio_clave) throw Error('Debes completar el cambio inicial de contraseña antes de operar.');
+
+    const staff = await call(query('bd_restaurante_personal', {
+      select: 'rol,activo',
+      usuario_id: own,
+      negocio_id: biz
+    }));
+    if (!staff?.[0]?.activo) throw Error('El propietario no ha activado este empleado.');
+
+    const p = await call(query('bd_restaurante_permisos', {
+      select: 'permiso,habilitado',
+      usuario_id: own,
+      negocio_id: biz,
+      habilitado: 'eq.true'
+    }));
+    const permitted = (p || []).map(x => x.permiso);
+    if (!permitted.length) throw Error('El propietario todavía no ha autorizado funciones para esta cuenta.');
+
+    return {
+      role: staff[0].rol === 'caja' ? 'Cajera' : 'Mesera',
+      permissions: permitted,
+      user: user.id,
+      verified: true,
+      owner: false
+    };
   }
-  async function signIn(name,password){
-    const identifier=String(name||'').trim().toLowerCase(),email=EMAIL_ALIAS[identifier]||identifier;
-    if(!email.includes('@'))throw Error('Escribe tu usuario autorizado o correo.');
-    // Limpia sesiones anteriores; credenciales personales solo en memoria de la petición.
-    session=null;try{sessionStorage.removeItem(SESSION_KEY)}catch(_e){}
-    const auth=await call('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})});
-    session={access_token:auth.access_token,refresh_token:auth.refresh_token,expires_at:Date.now()+(auth.expires_in||3600)*1000};
-    try{
-      const user=await identity(),role=await roleFor(user);
-      sessionStorage.setItem(SESSION_KEY,JSON.stringify(session));return role;
-    }catch(e){await signOut();throw e}
+
+  async function signIn(name, password) {
+    const identifier = String(name || '').trim().toLowerCase();
+    const email = EMAIL_ALIAS[identifier] || identifier;
+    if (!email.includes('@')) throw Error('Escribe tu usuario autorizado o correo.');
+
+    session = null;
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch (_e) {}
+
+    const auth = await call('/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+
+    session = {
+      access_token: auth.access_token,
+      refresh_token: auth.refresh_token,
+      expires_at: Date.now() + (auth.expires_in || 3600) * 1000
+    };
+
+    try {
+      const user = await identity();
+      const role = await roleFor(user);
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      return role;
+    } catch (e) {
+      await signOut();
+      throw e;
+    }
   }
-  async function signOut(){const t=session?.access_token;session=null;try{sessionStorage.removeItem(SESSION_KEY)}catch(_e){}if(t){try{await fetch(BASE+'/auth/v1/logout',{method:'POST',headers:{apikey:cfg.publishableKey,Authorization:'Bearer '+t}})}catch(_e){}}}
-  async function patchProduct(p){
-    if(!session?.access_token)throw Error('Inicia sesión primero.');
-    return call(query('bd_productos',{id:'eq.'+p.remoteId,negocio_id:'eq.'+BIZ}),{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({nombre:p.name,categoria:p.cat,descripcion:p.description,precio:p.price,activo:p.active,disponible:p.active&&p.price!==null})});
+
+  async function signOut() {
+    const token = session?.access_token;
+    session = null;
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch (_e) {}
+    if (token) {
+      try {
+        await fetch(BASE + '/auth/v1/logout', {
+          method: 'POST',
+          headers: {
+            apikey: cfg.publishableKey,
+            Authorization: 'Bearer ' + token
+          }
+        });
+      } catch (_e) {}
+    }
   }
-  async function rpc(name, payload={}){
-    if(!session?.access_token)throw Error('Inicia sesión con Supabase antes de operar.');
-    return call('/rest/v1/rpc/'+name,{method:'POST',body:JSON.stringify(payload)});
+
+  async function patchProduct(p) {
+    if (!session?.access_token) throw Error('Inicia sesión primero.');
+    return call(query('bd_productos', {
+      id: 'eq.' + p.remoteId,
+      negocio_id: 'eq.' + BIZ
+    }), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        nombre: p.name,
+        categoria: p.cat,
+        descripcion: p.description,
+        precio: p.price,
+        activo: p.active,
+        disponible: p.active && p.price !== null
+      })
+    });
   }
-  async function getTables(){return rpc('bd_estela_ver_mesas');}
-  async function openTable(number){return rpc('bd_estela_abrir_mesa',{p_numero:number});}
-  async function newTable(name){return rpc('bd_estela_agregar_mesa',{p_nombre:name||null});}
-  async function placeTableOrder(number,items,operationId){
-    return rpc('bd_estela_agregar_pedido_mesa',{p_numero:number,p_items:items.map(x=>({id:x.id,qty:x.qty,obs:x.obs||''})),p_operacion_id:operationId});
+
+  async function getTables() {
+    return rpc('bd_estela_ver_mesas');
   }
-  async function chargeTable(accountId,method,operationId,reference=''){
-    return rpc('bd_estela_cobrar_mesa',{p_cuenta_id:accountId,p_metodo:method,p_operacion_id:operationId,p_referencia:reference});
+  async function openTable(number) {
+    return rpc('bd_estela_abrir_mesa', { p_numero: number });
   }
-  async function resetPassword(email){
-    const redirect=cfg.publicMenuUrl;
-    return call('/auth/v1/recover',{method:'POST',body:JSON.stringify({email,redirect_to:redirect})});
+  async function newTable(name) {
+    return rpc('bd_estela_agregar_mesa', { p_nombre: name || null });
   }
-  return {cfg,publicProducts,publicPromotions,identity,signIn,signOut,patchProduct,resetPassword,roleFor,getTables,openTable,newTable,placeTableOrder,chargeTable};
+  async function placeTableOrder(number, items, operationId) {
+    return rpc('bd_estela_agregar_pedido_mesa', {
+      p_numero: number,
+      p_items: items.map(x => ({ id: x.id, qty: x.qty, obs: x.obs || '' })),
+      p_operacion_id: operationId
+    });
+  }
+  async function chargeTable(accountId, method, operationId, reference = '') {
+    return rpc('bd_estela_cobrar_mesa', {
+      p_cuenta_id: accountId,
+      p_metodo: method,
+      p_operacion_id: operationId,
+      p_referencia: reference
+    });
+  }
+
+  // Caja · nuevas funciones centralizadas (requieren la migración SQL V22).
+  async function getCashState() {
+    return rpc('bd_estela_caja_estado');
+  }
+  async function getCashAccounts() {
+    return rpc('bd_estela_caja_cuentas_abiertas');
+  }
+  async function openCash(amount, operationId) {
+    return rpc('bd_estela_caja_abrir', {
+      p_fondo: amount,
+      p_operacion_id: operationId
+    });
+  }
+  async function registerCashMovement(cashId, type, amount, concept, operationId) {
+    return rpc('bd_estela_caja_movimiento', {
+      p_caja_id: cashId,
+      p_tipo: type,
+      p_monto: amount,
+      p_concepto: concept,
+      p_operacion_id: operationId
+    });
+  }
+  async function cutCash(cashId, counted, operationId) {
+    return rpc('bd_estela_caja_cortar', {
+      p_caja_id: cashId,
+      p_efectivo_contado: counted,
+      p_operacion_id: operationId
+    });
+  }
+  async function createCashOrder(type, name, phone, address, notes, items, operationId) {
+    return rpc('bd_estela_caja_crear_pedido', {
+      p_tipo: type,
+      p_nombre_cliente: name,
+      p_telefono: phone || null,
+      p_direccion: address || null,
+      p_notas: notes || null,
+      p_items: items.map(x => ({ id: x.id, qty: x.qty, obs: x.obs || '' })),
+      p_operacion_id: operationId
+    });
+  }
+  async function chargeAccount(accountId, method, operationId, reference = '') {
+    return rpc('bd_estela_caja_cobrar_cuenta', {
+      p_cuenta_id: accountId,
+      p_metodo: method,
+      p_operacion_id: operationId,
+      p_referencia: reference
+    });
+  }
+
+  async function resetPassword(email) {
+    return call('/auth/v1/recover', {
+      method: 'POST',
+      body: JSON.stringify({ email, redirect_to: cfg.publicMenuUrl })
+    });
+  }
+
+  return {
+    cfg,
+    publicProducts,
+    publicPromotions,
+    identity,
+    signIn,
+    signOut,
+    patchProduct,
+    resetPassword,
+    roleFor,
+    getTables,
+    openTable,
+    newTable,
+    placeTableOrder,
+    chargeTable,
+    getCashState,
+    getCashAccounts,
+    openCash,
+    registerCashMovement,
+    cutCash,
+    createCashOrder,
+    chargeAccount
+  };
 })();
