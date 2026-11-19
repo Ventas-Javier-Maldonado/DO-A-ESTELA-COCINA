@@ -817,3 +817,31 @@ main{width:100%;max-width:none;margin:0;padding:0}
     margin: 2mm 0;
   }
 }
+
+
+/* V22.2 · Accesos secundarios persistentes y acceso al inventario externo */
+.cash-secondary {
+  overflow: hidden;
+}
+.cash-secondary-description {
+  margin: 10px 0 7px;
+  color: #807568;
+  font-size: 12px;
+}
+.cash-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.cash-secondary-actions button {
+  min-height: 42px;
+  flex: 1 1 220px;
+  text-align: left;
+}
+.cash-secondary-actions .cash-inventory-link {
+  border-color: #c5a36a;
+  background: #fff8ed;
+  color: #751d25;
+  font-weight: 700;
+}
